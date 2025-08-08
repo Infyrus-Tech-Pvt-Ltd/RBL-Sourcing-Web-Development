@@ -474,9 +474,6 @@ def update_status(inquiry_id):
 
 
 @app.route('/logout', methods=['POST'])
-
-@app.route('/logout')
-
 def logout():
     session.clear()
     return redirect(url_for('login'))
