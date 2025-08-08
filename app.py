@@ -3,7 +3,7 @@ from pocketbase import PocketBase
 from pocketbase.client import ClientResponseError
 from dotenv import load_dotenv
 from datetime import datetime, timedelta
-
+import requests
 import os
 
 # Load .env variables
@@ -13,8 +13,22 @@ app = Flask(__name__)
 
 app.secret_key = os.getenv('SECRET_KEY')
 
-# Initialize PocketBase client with your server URL from .env
-pb = PocketBase(os.getenv('POCKETBASE_URL'))
+
+POCKETBASE_URL = os.getenv('POCKETBASE_URL')
+COLLECTION = "products"
+
+pb = PocketBase(POCKETBASE_URL)
+
+# Authenticate admin and get token for API requests
+admin_auth = pb.admins.auth_with_password(
+    os.getenv('POCKETBASE_ADMIN_EMAIL'),
+    os.getenv('POCKETBASE_ADMIN_PASSWORD')
+)
+token = admin_auth.token
+
+HEADERS = {
+    "Authorization": f"Bearer {token}"
+}
 status_flow = [
     ("Inquiry", "🟡", "bg-yellow-500"),
     ("Quoting", "🟠", "bg-orange-600"),
@@ -27,11 +41,24 @@ status_flow = [
 ]
 
 
-# Authenticate admin user once here so pb can perform admin tasks
-pb.admins.auth_with_password(
-    os.getenv('POCKETBASE_ADMIN_EMAIL'),
-    os.getenv('POCKETBASE_ADMIN_PASSWORD')
-)
+def generate_next_product_id():
+    res = requests.get(f"{POCKETBASE_URL}/api/collections/{COLLECTION}/records", headers=HEADERS, params={"perPage": 100})
+    res.raise_for_status()
+    products = res.json().get("items", [])
+
+    max_num = 0
+    prefix = f"PROD_{os.getenv('CURRENT_YEAR', '2025')}_"
+    for p in products:
+        pid = p.get("product_id", "")
+        if pid.startswith(prefix):
+            try:
+                num = int(pid[len(prefix):])
+                if num > max_num:
+                    max_num = num
+            except:
+                continue
+    next_num = max_num + 1
+    return f"{prefix}{str(next_num).zfill(4)}"
 
 @app.route('/', methods=['GET', 'POST'])
 def login():
@@ -68,6 +95,87 @@ def home():
 @app.route('/dashboard')
 def dashboard():
         return render_template("dashboard.html")
+
+
+# product
+@app.route('/product')
+def product_list():
+    res = requests.get(f"{POCKETBASE_URL}/api/collections/{COLLECTION}/records", headers=HEADERS, params={"perPage": 100})
+    res.raise_for_status()
+    products = res.json().get("items", [])
+    products_simple = [
+        {
+            "id": p["id"],
+            "product_id": p.get("product_id", ""),
+            "name": p.get("name", ""),
+            "supplier": p.get("supplier", ""),
+            "model": p.get("model", ""),
+            "price": p.get("price", "")
+        } for p in products
+    ]
+    return render_template("product_list.html", products=products_simple)
+
+@app.route('/add_product', methods=['GET', 'POST'])
+def add_product():
+    product_id = request.args.get('id')
+
+    if request.method == 'POST':
+        data = request.form.to_dict()
+        files = request.files.getlist('uploaded_docs')
+
+        try:
+            price = float(data.get("price", 0))
+        except ValueError:
+            return "Invalid price", 400
+
+        pb_data = {
+            "product_id": data.get("product_id"),
+            "name": data.get("name"),
+            "description": data.get("description"),
+            "gross_weight": float(data.get("gross_weight", 0)) if data.get("gross_weight") else None,
+            "product_size": data.get("product_size"),
+            "hs_code": data.get("hs_code"),
+            "tax_rate": float(data.get("tax_rate", 0)) if data.get("tax_rate") else None,
+            "vat": float(data.get("vat", 0)) if data.get("vat") else None,
+            "qty_per_box": int(data.get("qty_per_box", 0)) if data.get("qty_per_box") else None,
+            "box_size": data.get("box_size"),
+            "box_weight": float(data.get("box_weight", 0)) if data.get("box_weight") else None,
+            "buying_rate": float(data.get("buying_rate", 0)) if data.get("buying_rate") else None,
+            "selling_rate": float(data.get("selling_rate", 0)) if data.get("selling_rate") else None,
+            "terms": data.get("terms"),
+            "specifications": data.get("specifications"),
+            "supplier": data.get("supplier"),
+            "model": data.get("model"),
+            "price": price,
+        }
+
+        files_payload = []
+        for f in files:
+            if f.filename != '':
+                files_payload.append(('uploaded_docs', (f.filename, f.stream, f.mimetype)))
+
+        if product_id:
+            pb_url = f"{POCKETBASE_URL}/api/collections/{COLLECTION}/records/{product_id}"
+            resp = requests.patch(pb_url, data=pb_data, files=files_payload, headers=HEADERS)
+        else:
+            pb_data["product_id"] = generate_next_product_id()
+            pb_url = f"{POCKETBASE_URL}/api/collections/{COLLECTION}/records"
+            resp = requests.post(pb_url, data=pb_data, files=files_payload, headers=HEADERS)
+
+        if resp.status_code in (200, 201):
+            return redirect(url_for("product_list"))
+        else:
+            return f"Error saving product: {resp.text}", resp.status_code
+
+    if product_id:
+        pb_url = f"{POCKETBASE_URL}/api/collections/{COLLECTION}/records/{product_id}"
+        resp = requests.get(pb_url, headers=HEADERS)
+        product = resp.json() if resp.status_code == 200 else None
+    else:
+        product = None
+
+    return render_template("add_product.html", product=product)
+
 
 #######################################################
 
@@ -200,16 +308,6 @@ def add_supplier():
         return redirect(url_for('suppliers'))
     return render_template('add_supplier.html')
 
-@app.route('/product')
-def product():
-    return render_template('product.html')
-
-@app.route('/add_product', methods=['GET', 'POST'])
-def add_product():
-    if request.method == 'POST':
-        # handle form data and add to database
-        return redirect(url_for('product'))
-    return render_template('add_product.html')
 
 @app.route('/customers', methods=['GET', 'POST'])
 def customer():
