@@ -59,6 +59,7 @@
       <table class="min-w-full border border-gray-200 divide-y divide-gray-100">
         <thead class="bg-gray-100 text-left text-sm font-semibold text-gray-600">
           <tr>
+            <th class="px-4 py-3">Customer ID</th>
             <th class="px-4 py-3">Name</th>
             <th class="px-4 py-3">Email</th>
             <th class="px-4 py-3">Phone</th>
@@ -69,15 +70,16 @@
         <tbody class="text-sm text-gray-700">
           {% for customer in customers %}
           <tr class="hover:bg-gray-50">
-            <td class="px-4 py-3 border-t">{{ customer.name }}</td>
-            <td class="px-4 py-3 border-t">{{ customer.email }}</td>
-            <td class="px-4 py-3 border-t">{{ customer.phone }}</td>
-            <td class="px-4 py-3 border-t">{{ customer.address }}</td>
-            <td class="px-4 py-3 border-t">{{ customer.created|datetimeformat }}</td>
+            <td class="border px-4 py-3">{{ customer.customer_id }}</td>
+            <td class="border px-4 py-3">{{ customer.name }}</td>
+            <td class="border px-4 py-3">{{ customer.email }}</td>
+            <td class="border px-4 py-3">{{ customer.phone }}</td>
+            <td class="border px-4 py-3">{{ customer.address }}</td>
+            <td class="border px-4 py-3">{{ customer.created|datetimeformat }}</td>
           </tr>
           {% else %}
           <tr>
-            <td colspan="5" class="text-center text-gray-400 py-6">No customers found.</td>
+            <td colspan="6" class="text-center text-gray-400 py-6">No customers found.</td>
           </tr>
           {% endfor %}
         </tbody>
