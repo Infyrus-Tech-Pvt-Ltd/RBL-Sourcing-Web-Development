@@ -84,7 +84,7 @@ def staff():
     except ClientResponseError as e:
         flash(f"Error fetching users: {e}", 'error')
         users = []
-    
+
     return render_template('staff.html', users=users)
 
 # Add Staff
@@ -97,7 +97,7 @@ def add_staff():
             role = request.form.get('role')
             password = request.form.get('password')
             verified = 'verified' in request.form
-            
+
             # Create new user in PocketBase
             user_data = {
                 'Name': name,  # Changed from 'name' to 'Name'
@@ -108,14 +108,14 @@ def add_staff():
                 'verified': verified,
                 'emailVisibility': True  # Added this field
             }
-            
+
             pb.collection('users').create(user_data)
             flash('Staff member created successfully!', 'success')
             return redirect(url_for('staff'))
-            
+
         except ClientResponseError as e:
             flash(f'Error creating staff member: {e}', 'error')
-    
+
     return render_template('add_staff.html')
 
 # Edit Staff
@@ -124,14 +124,14 @@ def edit_staff(user_id):
     try:
         # Get user data
         user = pb.collection('users').get_one(user_id)
-        
+
         if request.method == 'POST':
             name = request.form.get('name')
             email = request.form.get('email')
             role = request.form.get('role')
             password = request.form.get('password')
             verified = 'verified' in request.form
-            
+
             # Prepare update data
             update_data = {
                 'Name': name,  # Changed from 'name' to 'Name'
@@ -140,29 +140,31 @@ def edit_staff(user_id):
                 'verified': verified,
                 'emailVisibility': True  # Added this field
             }
-            
+
             # Only update password if provided
             if password:
                 update_data['password'] = password
                 update_data['passwordConfirm'] = password
-            
+
             # Update user in PocketBase
             pb.collection('users').update(user_id, update_data)
             flash('Staff member updated successfully!', 'success')
             return redirect(url_for('staff'))
-        
+
         return render_template('edit_staff.html', user=user)
-        
+
     except ClientResponseError as e:
         flash(f'Error: {e}', 'error')
         return redirect(url_for('staff'))
-    
+
 
 #######################################################
 
 # Staff Management - End
 
 #######################################################
+
+
 
 
 @app.route('/forgot-password', methods=['GET', 'POST'])
@@ -384,5 +386,5 @@ def logout():
     return redirect(url_for('login'))
 
 if __name__ == '__main__':
-    app.run(host="127.0.0.1", port=5050, debug=True)
+    app.run(host="0.0.0.0", port=5050, debug=True)
 
