@@ -20,6 +20,13 @@ CUSTOMER_COLLECTION="Customers"
 INQUIRY_COLLECTION = "inquiries"
 
 pb = PocketBase(POCKETBASE_URL)
+def record_to_dict(record):
+    return {k: getattr(record, k) for k in record.__fields__}  # if __fields__ exists
+
+# Or fallback:
+def record_to_dict(record):
+    return vars(record)
+
 
 # Authenticate admin and get token for API requests
 admin_auth = pb.admins.auth_with_password(
@@ -397,6 +404,17 @@ def datetimeformat(value):
     return datetime.strptime(value, "%Y-%m-%d %H:%M:%S.%f").strftime("%b %d, %Y")
 
 
+@app.route("/api/inquiries", methods=["GET"])
+def get_inquiries():
+    try:
+        inquiries = pb.collection(INQUIRY_COLLECTION).get_list(sort="-created", per_page=100)
+        inquiries_list = [inq.to_dict() for inq in inquiries.items]  # <--- FIXED here
+        return jsonify(inquiries_list)
+    except Exception as e:
+        print("Error fetching inquiries:", e)
+        return jsonify({"error": "Failed to fetch inquiries"}), 500
+
+
 @app.route("/api/inquiries", methods=["POST"])
 def create_inquiry():
     data = request.get_json()
@@ -418,15 +436,19 @@ def create_inquiry():
             "terms": data.get("terms", ""),
             "status": "Inquiry"
         })
-        return jsonify(new_inq.to_dict()), 201
+        return jsonify(new_inq), 201  # changed here
     except ClientResponseError as e:
         return jsonify({"error": str(e)}), 400
 
-# Get all inquiries
-@app.route("/api/inquiries", methods=["GET"])
-def get_inquiries():
-    inquiries = pb.collection(INQUIRY_COLLECTION).get_full_list(sort="-created")
-    return jsonify([inq.to_dict() for inq in inquiries])
+
+
+@app.route("/api/inquiries/<inq_id>", methods=["DELETE"])
+def delete_inquiry(inq_id):
+    try:
+        pb.collection(INQUIRY_COLLECTION).delete(inq_id)
+        return jsonify({"success": True})
+    except ClientResponseError as e:
+        return jsonify({"error": str(e)}), 400
 
 # Customer purchase history
 @app.route("/api/customer/<customer_id>/purchases", methods=["GET"])
@@ -437,13 +459,6 @@ def get_customer_purchases(customer_id):
     return jsonify([inq.to_dict() for inq in inquiries.items])
 
 # Delete inquiry
-@app.route("/api/inquiries/<inq_id>", methods=["DELETE"])
-def delete_inquiry(inq_id):
-    try:
-        pb.collection(INQUIRY_COLLECTION).delete(inq_id)
-        return jsonify({"success": True})
-    except ClientResponseError as e:
-        return jsonify({"error": str(e)}), 400
 
 # Inquiries page
 @app.route("/inquiries")

@@ -58,6 +58,22 @@ async function fetchInquiries() {
   const data = await res.json();
   const tbody = document.getElementById("inquiryTable");
   tbody.innerHTML = "";
+
+  function getStatusBadge(status) {
+    const statusMap = {
+      "Inquiry": { emoji: "🟡", color: "bg-yellow-500" },
+      "Quoting": { emoji: "🟠", color: "bg-orange-600" },
+      "Quotation Finalized": { emoji: "🟢", color: "bg-green-600" },
+      "Payment Received": { emoji: "🔵", color: "bg-blue-600" },
+      "In Shipment": { emoji: "🔄", color: "bg-indigo-600" },
+      "Arrived KTM": { emoji: "🛬", color: "bg-purple-600" },
+      "Delivered": { emoji: "✅", color: "bg-teal-600" },
+      "Closed": { emoji: "🌟", color: "bg-pink-600" }
+    };
+    const s = statusMap[status] || { emoji: "❔", color: "bg-gray-400" };
+    return `<span class="px-2 py-1 rounded text-white ${s.color}">${s.emoji} ${status}</span>`;
+  }
+
   data.forEach(inq => {
     tbody.innerHTML += `
       <tr class="border">
@@ -65,7 +81,7 @@ async function fetchInquiries() {
         <td><button onclick="viewCustomer('${inq.customer_id}', '${inq.customer_name}')" class="text-blue-600 underline">${inq.customer_name}</button></td>
         <td>${inq.product_name}</td>
         <td>${inq.quantity}</td>
-        <td>${inq.status}</td>
+        <td>${getStatusBadge(inq.status)}</td>
         <td>
           <button onclick="deleteInquiry('${inq.id}')" class="px-2 py-1 bg-red-600 text-white rounded">Delete</button>
         </td>
@@ -87,6 +103,9 @@ async function createInquiry() {
     body: JSON.stringify(data)
   });
   if (res.ok) {
+    // clear input fields after success
+    document.getElementById("quantity").value = "";
+    document.getElementById("terms").value = "";
     fetchInquiries();
   } else {
     const err = await res.json();
@@ -96,8 +115,13 @@ async function createInquiry() {
 
 async function deleteInquiry(id) {
   if (!confirm("Delete this inquiry?")) return;
-  await fetch(`/api/inquiries/${id}`, {method: "DELETE"});
-  fetchInquiries();
+  const res = await fetch(`/api/inquiries/${id}`, {method: "DELETE"});
+  if (res.ok) {
+    fetchInquiries();
+  } else {
+    const err = await res.json();
+    alert("Failed to delete inquiry: " + (err.error || JSON.stringify(err)));
+  }
 }
 
 async function viewCustomer(customer_id, customer_name) {
@@ -116,7 +140,9 @@ function closeModal() {
   document.getElementById("customerModal").classList.add("hidden");
 }
 
+// Initial load
 fetchInquiries();
 </script>
+
 
 {% endblock %}
