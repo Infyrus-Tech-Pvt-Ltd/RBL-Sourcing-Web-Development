@@ -17,6 +17,7 @@ app.secret_key = os.getenv('SECRET_KEY')
 POCKETBASE_URL = os.getenv('POCKETBASE_URL')
 COLLECTION = "products"
 CUSTOMER_COLLECTION="Customers"
+INQUIRY_COLLECTION = "inquiries"
 
 pb = PocketBase(POCKETBASE_URL)
 
@@ -213,7 +214,7 @@ def staff():
     except ClientResponseError as e:
         flash(f"Error fetching users: {e}", 'error')
         users = []
-    
+
     return render_template('staff.html', users=users)
 
 # Add Staff
@@ -396,72 +397,60 @@ def datetimeformat(value):
     return datetime.strptime(value, "%Y-%m-%d %H:%M:%S.%f").strftime("%b %d, %Y")
 
 
+@app.route("/api/inquiries", methods=["POST"])
+def create_inquiry():
+    data = request.get_json()
+    try:
+        customer = pb.collection(CUSTOMER_COLLECTION).get_one(data["customer_id"])
+        product = pb.collection(COLLECTION).get_one(data["product_id"])
+    except ClientResponseError:
+        return jsonify({"error": "Invalid customer or product ID"}), 400
+
+    inquiry_number = f"{customer.customer_id}_{product.product_id}"
+    try:
+        new_inq = pb.collection(INQUIRY_COLLECTION).create({
+            "inquiry_number": inquiry_number,
+            "customer_id": data["customer_id"],
+            "customer_name": customer.name,
+            "product_id": data["product_id"],
+            "product_name": product.name,
+            "quantity": int(data.get("quantity", 0)),
+            "terms": data.get("terms", ""),
+            "status": "Inquiry"
+        })
+        return jsonify(new_inq.to_dict()), 201
+    except ClientResponseError as e:
+        return jsonify({"error": str(e)}), 400
+
+# Get all inquiries
+@app.route("/api/inquiries", methods=["GET"])
+def get_inquiries():
+    inquiries = pb.collection(INQUIRY_COLLECTION).get_full_list(sort="-created")
+    return jsonify([inq.to_dict() for inq in inquiries])
+
+# Customer purchase history
+@app.route("/api/customer/<customer_id>/purchases", methods=["GET"])
+def get_customer_purchases(customer_id):
+    inquiries = pb.collection(INQUIRY_COLLECTION).get_list(
+        1, 50, {"filter": f"customer_id='{customer_id}'", "sort": "-created"}
+    )
+    return jsonify([inq.to_dict() for inq in inquiries.items])
+
+# Delete inquiry
+@app.route("/api/inquiries/<inq_id>", methods=["DELETE"])
+def delete_inquiry(inq_id):
+    try:
+        pb.collection(INQUIRY_COLLECTION).delete(inq_id)
+        return jsonify({"success": True})
+    except ClientResponseError as e:
+        return jsonify({"error": str(e)}), 400
+
+# Inquiries page
 @app.route("/inquiries")
-def inquiry_page():
+def inquiries_page():
     customers = pb.collection(CUSTOMER_COLLECTION).get_full_list()
     products = pb.collection(COLLECTION).get_full_list()
     return render_template("inquiries.html", customers=customers, products=products)
-
-@app.route("/api/inquiries", methods=["POST"])
-def create_inquiry():
-    data = request.json
-    customer_id = data.get("customer_id")
-    product_id = data.get("product_id")
-    quantity = data.get("quantity")
-    terms = data.get("terms")
-
-    # Fetch customer and product to get IDs for inquiry_number
-    customer = pb.collection(CUSTOMER_COLLECTION).get_one(customer_id)
-    product = pb.collection(COLLECTION).get_one(product_id)
-
-    inquiry_number = f"{customer['customer_id']}_{product['product_id']}"
-
-    inquiry = pb.collection("inquiries").create({
-        "inquiry_number": inquiry_number,
-        "customer_id": customer_id,
-        "product_id": product_id,
-        "quantity": quantity,
-        "terms": terms,
-        "status": "Inquiry"
-    })
-
-    response = {
-        "id": inquiry.id,
-        "inquiry_number": inquiry.get("inquiry_number"),
-        "status": inquiry.get("status"),
-        "customer_id": inquiry.get("customer_id"),
-        "product_id": inquiry.get("product_id"),
-        "quantity": inquiry.get("quantity"),
-        "terms": inquiry.get("terms"),
-    }
-
-    return jsonify(response)
-
-@app.route("/api/inquiries/<id>/next", methods=["POST"])
-def next_status(id):
-    inquiry = pb.collection("inquiries").get_one(id)
-    current_status = inquiry["status"]
-
-    try:
-        current_index = status_order.index(current_status)
-        if current_index == len(status_order) - 1:
-            return jsonify({"error": "Already closed"}), 400
-        next_status_val = status_order[current_index + 1]
-    except ValueError:
-        return jsonify({"error": "Invalid current status"}), 400
-
-    updated = pb.collection("inquiries").update(id, {"status": next_status_val})
-
-    response = {
-        "id": updated.id,
-        "inquiry_number": updated.get("inquiry_number"),
-        "status": updated.get("status"),
-        "customer_id": updated.get("customer_id"),
-        "product_id": updated.get("product_id"),
-        "quantity": updated.get("quantity"),
-        "terms": updated.get("terms"),
-    }
-    return jsonify(response)
 
 
 @app.route('/logout', methods=['POST'])

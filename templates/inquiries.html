@@ -1,116 +1,122 @@
 {% extends "index.html" %}
 {% block content %}
-<div class="bg-white p-6 rounded shadow-md max-w-4xl mx-auto">
-  <h2 class="text-2xl font-semibold mb-6">Create New Inquiry</h2>
+<div class="max-w-6xl mx-auto p-6 bg-white rounded shadow">
+  <h2 class="text-xl font-bold mb-4">Create Inquiry</h2>
+  <div class="grid grid-cols-2 gap-4">
+    <select id="customerSelect" class="border p-2 rounded">
+      {% for c in customers %}
+      <option value="{{ c.id }}">{{ c.customer_id }} - {{ c.name }}</option>
+      {% endfor %}
+    </select>
 
-  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-    <div>
-      <label class="block mb-1 font-semibold">Customer</label>
-      <select id="customerSelect" class="w-full p-2 border border-gray-300 rounded">
-        {% for c in customers %}
-        <option value="{{ c.id }}">{{ c.customer_id }} - {{ c.name }}</option>
-        {% endfor %}
-      </select>
-    </div>
+    <select id="productSelect" class="border p-2 rounded">
+      {% for p in products %}
+      <option value="{{ p.id }}">{{ p.product_id }} - {{ p.name }}</option>
+      {% endfor %}
+    </select>
 
-    <div>
-      <label class="block mb-1 font-semibold">Product</label>
-      <select id="productSelect" class="w-full p-2 border border-gray-300 rounded">
-        {% for p in products %}
-        <option value="{{ p.id }}">{{ p.product_id }} - {{ p.name }}</option>
-        {% endfor %}
-      </select>
-    </div>
-
-    <div>
-      <label class="block mb-1 font-semibold">Quantity</label>
-      <input id="quantity" type="number" class="w-full p-2 border border-gray-300 rounded" placeholder="Enter quantity"/>
-    </div>
-
-    <div>
-      <label class="block mb-1 font-semibold">Terms</label>
-      <textarea id="terms" class="w-full p-2 border border-gray-300 rounded" placeholder="Enter terms"></textarea>
-    </div>
+    <input id="quantity" type="number" placeholder="Quantity" class="border p-2 rounded col-span-1" />
+    <input id="terms" type="text" placeholder="Terms" class="border p-2 rounded col-span-1" />
   </div>
+  <button onclick="createInquiry()" class="mt-3 px-4 py-2 bg-blue-600 text-white rounded">Add Inquiry</button>
+</div>
 
-  <button id="createBtn" class="mt-4 bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition">
-    Create Inquiry
-  </button>
+<!-- Inquiry Table -->
+<div class="max-w-6xl mx-auto mt-6">
+  <table class="w-full border-collapse border">
+    <thead class="bg-gray-200">
+      <tr>
+        <th>Inquiry #</th>
+        <th>Customer</th>
+        <th>Product</th>
+        <th>Qty</th>
+        <th>Status</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody id="inquiryTable"></tbody>
+  </table>
+</div>
 
-  <div id="inquiryInfo" class="mt-6 hidden">
-    <h3 class="text-lg font-semibold mb-2">Inquiry Details</h3>
-    <p><b>Inquiry No:</b> <span id="inqNum"></span></p>
-    <p><b>Status:</b> <span id="status"></span></p>
-
-    <div class="mt-4 flex gap-2">
-      <button id="nextStatusBtn" class="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 transition">
-        Move to Next Status
-      </button>
-    </div>
+<!-- Customer Purchase Modal -->
+<div id="customerModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center">
+  <div class="bg-white p-6 rounded w-1/2">
+    <h2 class="text-lg font-bold mb-4" id="customerModalTitle"></h2>
+    <table class="w-full border">
+      <thead class="bg-gray-100">
+        <tr><th>Inquiry #</th><th>Product</th><th>Qty</th><th>Date</th></tr>
+      </thead>
+      <tbody id="customerPurchaseTable"></tbody>
+    </table>
+    <button onclick="closeModal()" class="mt-4 px-4 py-2 bg-gray-600 text-white rounded">Close</button>
   </div>
 </div>
 
 <script>
-const STATUS_EMOJIS = {
-  "Inquiry": "🟡",
-  "Quoting": "🟠",
-  "Quotation Finalized": "🟢",
-  "Payment Received": "🔵",
-  "In Shipment": "🔄",
-  "Arrived KTM": "🛬",
-  "Delivered": "✅",
-  "Closed": "🌟"
-};
+async function fetchInquiries() {
+  const res = await fetch("/api/inquiries");
+  const data = await res.json();
+  const tbody = document.getElementById("inquiryTable");
+  tbody.innerHTML = "";
+  data.forEach(inq => {
+    tbody.innerHTML += `
+      <tr class="border">
+        <td>${inq.inquiry_number}</td>
+        <td><button onclick="viewCustomer('${inq.customer_id}', '${inq.customer_name}')" class="text-blue-600 underline">${inq.customer_name}</button></td>
+        <td>${inq.product_name}</td>
+        <td>${inq.quantity}</td>
+        <td>${inq.status}</td>
+        <td>
+          <button onclick="deleteInquiry('${inq.id}')" class="px-2 py-1 bg-red-600 text-white rounded">Delete</button>
+        </td>
+      </tr>
+    `;
+  });
+}
 
-let currentInquiry = null;
-
-document.getElementById("createBtn").onclick = async () => {
-  const customer_id = document.getElementById("customerSelect").value;
-  const product_id = document.getElementById("productSelect").value;
-  const quantity = document.getElementById("quantity").value;
-  const terms = document.getElementById("terms").value;
-
+async function createInquiry() {
+  const data = {
+    customer_id: document.getElementById("customerSelect").value,
+    product_id: document.getElementById("productSelect").value,
+    quantity: parseInt(document.getElementById("quantity").value, 10) || 0,
+    terms: document.getElementById("terms").value
+  };
   const res = await fetch("/api/inquiries", {
     method: "POST",
     headers: {"Content-Type": "application/json"},
-    body: JSON.stringify({customer_id, product_id, quantity, terms})
+    body: JSON.stringify(data)
   });
-
-  if (!res.ok) {
-    alert("Failed to create inquiry");
-    return;
-  }
-
-  const data = await res.json();
-  currentInquiry = data;
-  document.getElementById("inquiryInfo").classList.remove("hidden");
-  updateUI(data);
-};
-
-document.getElementById("nextStatusBtn").onclick = async () => {
-  if (!currentInquiry) return;
-  const res = await fetch(`/api/inquiries/${currentInquiry.id}/next`, {method: "POST"});
-  const data = await res.json();
-
   if (res.ok) {
-    currentInquiry = data;
-    updateUI(data);
+    fetchInquiries();
   } else {
-    alert(data.error);
-  }
-};
-
-function updateUI(data) {
-  document.getElementById("inqNum").innerText = data.inquiry_number || "N/A";
-  document.getElementById("status").innerText = `${STATUS_EMOJIS[data.status] || ""} ${data.status || ""}`;
-
-  if (data.status === "Closed") {
-    document.getElementById("nextStatusBtn").disabled = true;
-    document.getElementById("nextStatusBtn").classList.add("opacity-50", "cursor-not-allowed");
-  } else {
-    document.getElementById("nextStatusBtn").disabled = false;
-    document.getElementById("nextStatusBtn").classList.remove("opacity-50", "cursor-not-allowed");
+    const err = await res.json();
+    alert("Failed to add inquiry: " + (err.error || JSON.stringify(err)));
   }
 }
+
+async function deleteInquiry(id) {
+  if (!confirm("Delete this inquiry?")) return;
+  await fetch(`/api/inquiries/${id}`, {method: "DELETE"});
+  fetchInquiries();
+}
+
+async function viewCustomer(customer_id, customer_name) {
+  const res = await fetch(`/api/customer/${customer_id}/purchases`);
+  const data = await res.json();
+  document.getElementById("customerModalTitle").innerText = `${customer_name} - Purchase History`;
+  const tbody = document.getElementById("customerPurchaseTable");
+  tbody.innerHTML = "";
+  data.forEach(inq => {
+    tbody.innerHTML += `<tr><td>${inq.inquiry_number}</td><td>${inq.product_name}</td><td>${inq.quantity}</td><td>${new Date(inq.created).toLocaleDateString()}</td></tr>`;
+  });
+  document.getElementById("customerModal").classList.remove("hidden");
+}
+
+function closeModal() {
+  document.getElementById("customerModal").classList.add("hidden");
+}
+
+fetchInquiries();
 </script>
+
 {% endblock %}
